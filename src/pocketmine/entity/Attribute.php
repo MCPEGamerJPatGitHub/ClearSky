@@ -21,6 +21,8 @@
 
 namespace pocketmine\entity;
 
+use pocketmine\Server;
+
 class Attribute{
 
 	const ABSORPTION = 0;
@@ -50,7 +52,6 @@ class Attribute{
 	protected static $attributes = [];
 
 	public static function init(){
-		//Just a quick note: 340282346638528859811704183484516925440 is the size of a float. #PEMapModder
 		self::addAttribute(self::ABSORPTION, "minecraft:absorption", 0.00, 340282346638528859811704183484516925440.00, 0.00);
 		self::addAttribute(self::SATURATION, "minecraft:player.saturation", 0.00, 20.00, 5.00);
 		self::addAttribute(self::EXHAUSTION, "minecraft:player.exhaustion", 0.00, 5.00, 0.41);
@@ -157,7 +158,6 @@ class Attribute{
 	public function setDefaultValue($defaultValue){
 		if($defaultValue > $this->getMaxValue() or $defaultValue < $this->getMinValue()){
 			throw new \InvalidArgumentException("Value $defaultValue exceeds the range!");
-			
 		}
 
 		if($this->defaultValue !== $defaultValue){
@@ -171,10 +171,10 @@ class Attribute{
 		return $this->currentValue;
 	}
 
-	public function setValue($value, $fit = false){
+	public function setValue($value, bool $fit = true, bool $shouldSend = false){
 		if($value > $this->getMaxValue() or $value < $this->getMinValue()){
-			if($fit){
-				throw new \InvalidArgumentException("Value $value exceeds the range!");
+			if(!$fit){
+				Server::getInstance()->getLogger()->error("[Attribute / {$this->getName()}] Value $value exceeds the range!");
 			}
 			$value = min(max($value, $this->getMinValue()), $this->getMaxValue());
 		}
@@ -183,7 +183,11 @@ class Attribute{
 			$this->desynchronized = true;
 			$this->currentValue = $value;
 		}
-		return $value;
+
+		if($shouldSend){
+			$this->desynchronized = true;
+		}
+		return $this;
 	}
 
 	public function getName(){
@@ -198,7 +202,7 @@ class Attribute{
 		return $this->shouldSend;
 	}
 
-	public function isDesynchronized(){
+	public function isDesynchronized() : bool{
 		return $this->shouldSend and $this->desynchronized;
 	}
 

@@ -1,18 +1,38 @@
 <?php
+
+/*
+ *
+ *  ____            _        _   __  __ _                  __  __ ____  
+ * |  _ \ ___   ___| | _____| |_|  \/  (_)_ __   ___      |  \/  |  _ \ 
+ * | |_) / _ \ / __| |/ / _ \ __| |\/| | | '_ \ / _ \_____| |\/| | |_) |
+ * |  __/ (_) | (__|   <  __/ |_| |  | | | | | |  __/_____| |  | |  __/ 
+ * |_|   \___/ \___|_|\_\___|\__|_|  |_|_|_| |_|\___|     |_|  |_|_| 
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @author PocketMine Team
+ * @link http://www.pocketmine.net/
+ * 
+ *
+*/
+
 namespace pocketmine\entity;
+
 
 use pocketmine\event\entity\EntityCombustByEntityEvent;
 use pocketmine\event\entity\EntityDamageByChildEntityEvent;
 use pocketmine\event\entity\EntityDamageByEntityEvent;
 use pocketmine\event\entity\EntityDamageEvent;
-
 use pocketmine\event\entity\ProjectileHitEvent;
-use pocketmine\level\format\FullChunk;
+use pocketmine\item\Potion;
+use pocketmine\level\Level;
 use pocketmine\level\MovingObjectPosition;
 use pocketmine\math\Vector3;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\ShortTag;
-use pocketmine\item\Potion;
 
 abstract class Projectile extends Entity{
 
@@ -24,12 +44,12 @@ abstract class Projectile extends Entity{
 
 	public $hadCollision = false;
 
-	public function __construct(FullChunk $chunk, CompoundTag $nbt, Entity $shootingEntity = null){
+	public function __construct(Level $level, CompoundTag $nbt, Entity $shootingEntity = null){
 		$this->shootingEntity = $shootingEntity;
 		if($shootingEntity !== null){
 			$this->setDataProperty(self::DATA_SHOOTER_ID, self::DATA_TYPE_LONG, $shootingEntity->getId());
 		}
-		parent::__construct($chunk, $nbt);
+		parent::__construct($level, $nbt);
 	}
 
 	public function attack($damage, EntityDamageEvent $source){
@@ -121,7 +141,7 @@ abstract class Projectile extends Entity{
 					$motion = sqrt($this->motionX ** 2 + $this->motionY ** 2 + $this->motionZ ** 2);
 					$damage = ceil($motion * $this->damage);
 
-					if($this instanceof Arrow and $this->isCritical){
+					if($this instanceof Arrow and $this->isCritical()){
 						$damage += mt_rand(0, (int) ($damage / 2) + 1);
 					}
 
@@ -133,11 +153,11 @@ abstract class Projectile extends Entity{
 
 					if($movingObjectPosition->entityHit->attack($ev->getFinalDamage(), $ev) === true){
 						if($this instanceof Arrow and $this->getPotionId() != 0){
-							foreach(Potion::getAdditionalEffects($this->potionId - 1) as $effect){
+							foreach(Potion::getEffectsById($this->getPotionId() - 1) as $effect){
 								$movingObjectPosition->entityHit->addEffect($effect->setDuration($effect->getDuration() / 8));
 							}
 						}
-						#$ev->useArmors();
+						$ev->useArmors();
 					}
 
 					$this->hadCollision = true;

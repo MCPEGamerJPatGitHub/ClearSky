@@ -1,54 +1,80 @@
 <?php
+
+/*
+ *
+ *  _____   _____   __   _   _   _____  __    __  _____
+ * /  ___| | ____| |  \ | | | | /  ___/ \ \  / / /  ___/
+ * | |     | |__   |   \| | | | | |___   \ \/ /  | |___
+ * | |  _  |  __|  | |\   | | | \___  \   \  /   \___  \
+ * | |_| | | |___  | | \  | | |  ___| |   / /     ___| |
+ * \_____/ |_____| |_|  \_| |_| /_____/  /_/     /_____/
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @author iTX Technologies
+ * @link https://itxtech.org
+ *
+ */
+
 namespace pocketmine\entity;
 
+use pocketmine\event\entity\EntityDamageByEntityEvent;
 use pocketmine\item\Item as ItemItem;
+use pocketmine\network\protocol\AddEntityPacket;
 use pocketmine\Player;
-use pocketmine\nbt\tag\IntTag;
 
 class Slime extends Living{
-    const NETWORK_ID = 37;
-    const DATA_SIZE = 16;
+	const NETWORK_ID = 37;
 
-    public $height = 2;
-    public $width = 2;
-    public $lenght = 2;//TODO: Size
+	const DATA_SLIME_SIZE = 16;
+
+	public $width = 0.3;
+	public $length = 0.9;
+	public $height = 5;
+
+	public $dropExp = [1, 4];
 	
-	protected $exp_min = 1;
-	protected $exp_max = 1;//TODO: Size
-
-    public function initEntity(){
-        $this->setMaxHealth(16);
-        parent::initEntity();
-		if(!isset($this->namedtag->Size)){
-			$this->setSize(mt_rand(0, 3));
+	public function getName() : string{
+		return "Slime";
+	}
+	
+	public function spawnTo(Player $player){
+		$pk = new AddEntityPacket();
+		$pk->eid = $this->getId();
+		$pk->type = Slime::NETWORK_ID;
+		$pk->x = $this->x;
+		$pk->y = $this->y;
+		$pk->z = $this->z;
+		$pk->speedX = $this->motionX;
+		$pk->speedY = $this->motionY;
+		$pk->speedZ = $this->motionZ;
+		$pk->yaw = $this->yaw;
+		$pk->pitch = $this->pitch;
+		$pk->metadata = $this->dataProperties;
+		$player->dataPacket($pk);
+		parent::spawnTo($player);
+	}
+	
+	public function getDrops(){
+		$drops = array(ItemItem::get(ItemItem::SLIMEBALL, 0, 1));
+		if ($this->lastDamageCause instanceof EntityDamageByEntityEvent and $this->lastDamageCause->getEntity() instanceof Player) {
+			if (\mt_rand(0, 199) < 5) {
+				switch (\mt_rand(0, 2)) {
+					case 0:
+						$drops[] = ItemItem::get(ItemItem::IRON_INGOT, 0, 1);
+						break;
+					case 1:
+						$drops[] = ItemItem::get(ItemItem::CARROT, 0, 1);
+						break;
+					case 2:
+						$drops[] = ItemItem::get(ItemItem::POTATO, 0, 1);
+						break;
+				}
+			}
 		}
-    }
-
-    public function getName(){
-        return "Slime";
-    }
-
-    public function spawnTo(Player $player){
-        $pk = $this->addEntityDataPacket($player);
-        $pk->type = self::NETWORK_ID;
-
-        $player->dataPacket($pk);
-        parent::spawnTo($player);
-    }
-
-    public function getDrops(){
-        return [
-            ItemItem::get(ItemItem::SLIMEBALL, 0, mt_rand(0, 2))
-        ];
-    }
-
-    public function setSize($value){
-        $this->namedtag->Size = new IntTag("Size", $value);
-		$this->setDataProperty(self::DATA_SIZE, self::DATA_TYPE_BYTE, $value);
-    }
-
-    public function getSize(){
-        return $this->namedtag["Size"];
-    }
-
+		return $drops;
+	}
 }

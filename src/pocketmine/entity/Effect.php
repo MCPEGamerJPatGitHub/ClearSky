@@ -1,9 +1,27 @@
 <?php
+
+/*
+ *
+ *  ____            _        _   __  __ _                  __  __ ____
+ * |  _ \ ___   ___| | _____| |_|  \/  (_)_ __   ___      |  \/  |  _ \
+ * | |_) / _ \ / __| |/ / _ \ __| |\/| | | '_ \ / _ \_____| |\/| | |_) |
+ * |  __/ (_) | (__|   <  __/ |_| |  | | | | | |  __/_____| |  | |  __/
+ * |_|   \___/ \___|_|\_\___|\__|_|  |_|_|_| |_|\___|     |_|  |_|_|
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @author PocketMine Team
+ * @link http://www.pocketmine.net/
+ *
+ *
+*/
+
 namespace pocketmine\entity;
 
 use pocketmine\event\entity\EntityDamageEvent;
-use pocketmine\event\entity\EntityEffectAddEvent;
-use pocketmine\event\entity\EntityEffectRemoveEvent;
 use pocketmine\event\entity\EntityRegainHealthEvent;
 use pocketmine\event\player\PlayerExhaustEvent;
 use pocketmine\network\protocol\MobEffectPacket;
@@ -59,20 +77,22 @@ class Effect{
 		self::$effects[Effect::FIRE_RESISTANCE] = new Effect(Effect::FIRE_RESISTANCE, "%potion.fireResistance", 228, 154, 58);
 		self::$effects[Effect::WATER_BREATHING] = new Effect(Effect::WATER_BREATHING, "%potion.waterBreathing", 46, 82, 153);
 		self::$effects[Effect::INVISIBILITY] = new Effect(Effect::INVISIBILITY, "%potion.invisibility", 127, 131, 146);
+
 		self::$effects[Effect::BLINDNESS] = new Effect(Effect::BLINDNESS, "%potion.blindness", 191, 192, 192);
 		self::$effects[Effect::NIGHT_VISION] = new Effect(Effect::NIGHT_VISION, "%potion.nightVision", 0, 0, 139);
-		self::$effects[Effect::HUNGER] = new Effect(Effect::HUNGER, "%potion.hunger", 46, 139, 87, true);
+		self::$effects[Effect::HUNGER] = new Effect(Effect::HUNGER, "%potion.hunger", 46, 139, 87);
+
 		self::$effects[Effect::WEAKNESS] = new Effect(Effect::WEAKNESS, "%potion.weakness", 72, 77, 72 , true);
 		self::$effects[Effect::POISON] = new Effect(Effect::POISON, "%potion.poison", 78, 147, 49, true);
 		self::$effects[Effect::WITHER] = new Effect(Effect::WITHER, "%potion.wither", 53, 42, 39, true);
 		self::$effects[Effect::HEALTH_BOOST] = new Effect(Effect::HEALTH_BOOST, "%potion.healthBoost", 248, 125, 35);
+
 		self::$effects[Effect::ABSORPTION] = new Effect(Effect::ABSORPTION, "%potion.absorption", 36, 107, 251);
 		self::$effects[Effect::SATURATION] = new Effect(Effect::SATURATION, "%potion.saturation", 255, 0, 255);
 	}
 
 	/**
 	 * @param int $id
-	 *
 	 * @return $this
 	 */
 	public static function getEffect($id){
@@ -113,7 +133,7 @@ class Effect{
 		$this->setColor($r, $g, $b);
 	}
 
-	public function getName(){
+	public function getName() : string{
 		return $this->name;
 	}
 
@@ -151,8 +171,8 @@ class Effect{
 	 *
 	 * @return $this
 	 */
-	public function setAmplifier($amplifier){
-		$this->amplifier = (int) $amplifier;
+	public function setAmplifier(int $amplifier){
+		$this->amplifier = $amplifier & 0xff;
 		return $this;
 	}
 
@@ -183,8 +203,15 @@ class Effect{
 				}
 				return true;
 			case Effect::REGENERATION:
-			case Effect::HUNGER:
 				if(($interval = (40 >> $this->amplifier)) > 0){
+					return ($this->duration % $interval) === 0;
+				}
+				return true;
+			case Effect::HUNGER:
+				if($this->amplifier < 0){ // prevents hacking with amplifier -1
+					return false;
+				}
+				if(($interval = 20) > 0){
 					return ($this->duration % $interval) === 0;
 				}
 				return true;
@@ -247,7 +274,9 @@ class Effect{
 				break;
 			case Effect::SATURATION:
 				if($entity instanceof Player){
-					$entity->addFood(1);
+					if($entity->getServer()->foodEnabled) {
+						$entity->setFood($entity->getFood() + 1);
+					}
 				}
 				break;
 		}
@@ -262,73 +291,69 @@ class Effect{
 	}
 
 	public function add(Entity $entity, $modify = false, Effect $oldEffect = null){
-		$entity->getLevel()->getServer()->getPluginManager()->callEvent($ev = new EntityEffectAddEvent($entity, $this, $modify, $oldEffect));
-		if($ev->isCancelled()){
-			return;
-		}
 		if($entity instanceof Player){
 			$pk = new MobEffectPacket();
-			$pk->eid = 0;
+			$pk->eid = $entity->getId();
 			$pk->effectId = $this->getId();
 			$pk->amplifier = $this->getAmplifier();
 			$pk->particles = $this->isVisible();
 			$pk->duration = $this->getDuration();
-			if($ev->willModify()){
+			if($modify){
 				$pk->eventId = MobEffectPacket::EVENT_MODIFY;
 			}else{
 				$pk->eventId = MobEffectPacket::EVENT_ADD;
 			}
 
 			$entity->dataPacket($pk);
+
+			if($this->id === Effect::SPEED){
+				$attr = $entity->getAttributeMap()->getAttribute(Attribute::MOVEMENT_SPEED);
+				if($modify and $oldEffect !== null){
+					$speed = $attr->getValue() / (1 + 0.2 * ($oldEffect->getAmplifier() + 1));
+				}else{
+					$speed = $attr->getValue();
+				}
+				$speed *= (1 + 0.2 * ($this->amplifier + 1));
+				$attr->setValue($speed);
+			}elseif($this->id === Effect::SLOWNESS){
+				$attr = $entity->getAttributeMap()->getAttribute(Attribute::MOVEMENT_SPEED);
+				if($modify and $oldEffect !== null){
+					$speed = $attr->getValue() / (1 - 0.15 * ($oldEffect->getAmplifier() + 1));
+				}else{
+					$speed = $attr->getValue();
+				}
+				$speed *= (1 - (0.15 * $this->amplifier + 1));
+				$attr->setValue($speed);
+			}
 		}
 
 		if($this->id === Effect::INVISIBILITY){
 			$entity->setDataFlag(Entity::DATA_FLAGS, Entity::DATA_FLAG_INVISIBLE, true);
 			$entity->setNameTagVisible(false);
-		}elseif($this->id === Effect::SPEED){
-			$attr = $entity->getAttributeMap()->getAttribute(Attribute::MOVEMENT_SPEED);
-			if($ev->willModify() and $oldEffect !== null){
-				$speed = $attr->getValue() / (1 + 0.2 * $oldEffect->getAmplifier());
-			}else{
-				$speed = $attr->getValue();
-			}
-			$speed *= (1 + 0.2 * $this->amplifier);
-			$attr->setValue($speed);
-		}elseif($this->id === Effect::SLOWNESS){
-			$attr = $entity->getAttributeMap()->getAttribute(Attribute::MOVEMENT_SPEED);
-			if($ev->willModify() and $oldEffect !== null){
-				$speed = $attr->getValue() / (1 - 0.15 * $oldEffect->getAmplifier());
-			}else{
-				$speed = $attr->getValue();
-			}
-			$speed *= (1 - 0.15 * $this->amplifier);
-			$attr->setValue($speed);
 		}
 	}
 
 	public function remove(Entity $entity){
-		$entity->getLevel()->getServer()->getPluginManager()->callEvent($ev = new EntityEffectRemoveEvent($entity, $this));
-		if($ev->isCancelled()){
-			return;
-		}
 		if($entity instanceof Player){
 			$pk = new MobEffectPacket();
-			$pk->eid = 0;
+			$pk->eid = $entity->getId();
 			$pk->eventId = MobEffectPacket::EVENT_REMOVE;
 			$pk->effectId = $this->getId();
 
 			$entity->dataPacket($pk);
+
+			if($this->id === Effect::SPEED){
+				$attr = $entity->getAttributeMap()->getAttribute(Attribute::MOVEMENT_SPEED);
+				$attr->setValue($attr->getValue() / (1 + 0.2 * ($this->amplifier + 1)));
+			}elseif($this->id === Effect::SLOWNESS){
+				$attr = $entity->getAttributeMap()->getAttribute(Attribute::MOVEMENT_SPEED);
+				$attr->setValue($attr->getValue() / (1 - 0.15 * ($this->amplifier + 1)));
+			}
 		}
 
 		if($this->id === Effect::INVISIBILITY){
 			$entity->setDataFlag(Entity::DATA_FLAGS, Entity::DATA_FLAG_INVISIBLE, false);
 			$entity->setNameTagVisible(true);
-		}elseif($this->id === Effect::SPEED){
-			$attr = $entity->getAttributeMap()->getAttribute(Attribute::MOVEMENT_SPEED);
-			$attr->setValue($attr->getValue() / (1 + 0.2 * $this->amplifier));
-		}elseif($this->id === Effect::SLOWNESS){
-			$attr = $entity->getAttributeMap()->getAttribute(Attribute::MOVEMENT_SPEED);
-			$attr->setValue($attr->getValue() / (1 - 0.15 * $this->amplifier));
 		}
 	}
 }

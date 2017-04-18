@@ -1,5 +1,26 @@
 <?php
+
+/*
+ *
+ *  ____            _        _   __  __ _                  __  __ ____  
+ * |  _ \ ___   ___| | _____| |_|  \/  (_)_ __   ___      |  \/  |  _ \ 
+ * | |_) / _ \ / __| |/ / _ \ __| |\/| | | '_ \ / _ \_____| |\/| | |_) |
+ * |  __/ (_) | (__|   <  __/ |_| |  | | | | | |  __/_____| |  | |  __/ 
+ * |_|   \___/ \___|_|\_\___|\__|_|  |_|_|_| |_|\___|     |_|  |_|_| 
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @author PocketMine Team
+ * @link http://www.pocketmine.net/
+ * 
+ *
+*/
+
 namespace pocketmine\entity;
+
 
 use pocketmine\block\Block;
 use pocketmine\event\entity\EntityDamageByChildEntityEvent;
@@ -12,9 +33,8 @@ use pocketmine\item\Item as ItemItem;
 use pocketmine\math\Vector3;
 use pocketmine\nbt\tag\ShortTag;
 use pocketmine\network\protocol\EntityEventPacket;
-use pocketmine\Server;
-use pocketmine\utils\BlockIterator;
 use pocketmine\Player;
+use pocketmine\utils\BlockIterator;
 
 abstract class Living extends Entity implements Damageable{
 
@@ -22,35 +42,24 @@ abstract class Living extends Entity implements Damageable{
 	protected $drag = 0.02;
 
 	protected $attackTime = 0;
-
-	protected $invisible = false;
 	
-	protected $exp_min = 0;
-	protected $exp_max = 0;
+	protected $invisible = false;
 
 	protected function initEntity(){
 		parent::initEntity();
+
 		if(isset($this->namedtag->HealF)){
 			$this->namedtag->Health = new ShortTag("Health", (int) $this->namedtag["HealF"]);
 			unset($this->namedtag->HealF);
-		}elseif(!isset($this->namedtag->Health) or !($this->namedtag->Health instanceof ShortTag)){
+		}
+
+		if(!isset($this->namedtag->Health) or !($this->namedtag->Health instanceof ShortTag)){
 			$this->namedtag->Health = new ShortTag("Health", $this->getMaxHealth());
 		}
-		if(!isset($this->namedtag->MaxHealth) or !($this->namedtag->MaxHealth instanceof ShortTag)){
-			$this->namedtag->MaxHealth = new ShortTag("MaxHealth", $this->getMaxHealth());
-		}
-
-		$this->setMaxHealth($this->namedtag["MaxHealth"]);
-		$this->setHealth($this->getAttributeMap()->getAttribute(Attribute::HEALTH)->setMaxValue($this->getMaxHealth())->setValue($this->namedtag["Health"]));
-	}
-
-	protected function addAttributes(){
-		$this->attributeMap->addAttribute(Attribute::getAttribute(Attribute::HEALTH));
-		$this->attributeMap->addAttribute(Attribute::getAttribute(Attribute::FOLLOW_RANGE));
-		$this->attributeMap->addAttribute(Attribute::getAttribute(Attribute::KNOCKBACK_RESISTANCE));
-		$this->attributeMap->addAttribute(Attribute::getAttribute(Attribute::MOVEMENT_SPEED));
-		$this->attributeMap->addAttribute(Attribute::getAttribute(Attribute::ATTACK_DAMAGE));
-		$this->attributeMap->addAttribute(Attribute::getAttribute(Attribute::ABSORPTION));
+		
+		if($this->namedtag["Health"] <= 0)
+			$this->setHealth(20);
+		else $this->setHealth($this->namedtag["Health"]);
 	}
 
 	public function setHealth($amount){
@@ -60,18 +69,16 @@ abstract class Living extends Entity implements Damageable{
 			$pk = new EntityEventPacket();
 			$pk->eid = $this->getId();
 			$pk->event = EntityEventPacket::RESPAWN;
-			Server::broadcastPacket($this->hasSpawned, $pk);
+			$this->server->broadcastPacket($this->hasSpawned, $pk);
 		}
-	}
-
-	public function setMaxHealth($amount){
-		if(is_null($this->attributeMap->getAttribute(Attribute::HEALTH))) $this->attributeMap->addAttribute(Attribute::getAttribute(Attribute::HEALTH));
-		$this->attributeMap->getAttribute(Attribute::HEALTH)->setMaxValue($amount);
 	}
 
 	public function saveNBT(){
 		parent::saveNBT();
+		$this->namedtag->Health = new ShortTag("Health", $this->getHealth());
 	}
+
+	public abstract function getName();
 
 	public function hasLineOfSight(Entity $entity){
 		//TODO: head height
@@ -92,15 +99,15 @@ abstract class Living extends Entity implements Damageable{
 		if($this->attackTime > 0 or $this->noDamageTicks > 0){
 			$lastCause = $this->getLastDamageCause();
 			if($lastCause !== null and $lastCause->getDamage() >= $damage){
-				$source->setCancelled();
+                $source->setCancelled();
 			}
 		}
 
-		parent::attack($damage, $source);
+        parent::attack($damage, $source);
 
-		if($source->isCancelled()){
-			return;
-		}
+        if($source->isCancelled()){
+            return;
+        }
 
 		if($source instanceof EntityDamageByEntityEvent){
 			$e = $source->getDamager();
@@ -108,19 +115,22 @@ abstract class Living extends Entity implements Damageable{
 				$e = $source->getChild();
 			}
 
-			if($e->isOnFire() > 0){
+			if($e->isOnFire() > 0 and !($e instanceof Player)){
 				$this->setOnFire(2 * $this->server->getDifficulty());
 			}
 
 			$deltaX = $this->x - $e->x;
 			$deltaZ = $this->z - $e->z;
 			$this->knockBack($e, $damage, $deltaX, $deltaZ, $source->getKnockBack());
+			if($e instanceof Husk){
+				$this->addEffect(Effect::getEffect(Effect::HUNGER)->setDuration(7 * 20 * $this->server->getDifficulty()));
+			}
 		}
 
 		$pk = new EntityEventPacket();
 		$pk->eid = $this->getId();
 		$pk->event = $this->getHealth() <= 0 ? EntityEventPacket::DEATH_ANIMATION : EntityEventPacket::HURT_ANIMATION; //Ouch!
-		Server::broadcastPacket($this->hasSpawned, $pk);
+		$this->server->broadcastPacket($this->hasSpawned, $pk);
 
 		$this->attackTime = 10; //0.5 seconds cooldown
 	}
@@ -148,14 +158,7 @@ abstract class Living extends Entity implements Damageable{
 
 		$this->setMotion($motion);
 	}
-	
-	public function getExperience(){
-		if($this->exp_max > 0){
-			return mt_rand($this->exp_min,$this->exp_max);
-		}
-		return 0;
-	}
-	
+
 	public function kill(){
 		if(!$this->isAlive()){
 			return;
@@ -165,15 +168,9 @@ abstract class Living extends Entity implements Damageable{
 		foreach($ev->getDrops() as $item){
 			$this->getLevel()->dropItem($this, $item);
 		}
-		if($this->server->getProperty("player.experience.enable", true)
-		and $this->server->getProperty("experience.mob-drop", true)){
-			$DropExp = $this->getExperience();
-			$vector = new Vector3(ceil($this->x),ceil($this->y),ceil($this->z));
-			$this->getLevel()->spawnExperienceOrb($vector,$DropExp);
-		}
 	}
 
-	public function entityBaseTick($tickDiff = 1){
+	public function entityBaseTick($tickDiff = 1, $EnchantL = 0){
 		Timings::$timerLivingEntityBaseTick->startTiming();
 		$this->setDataFlag(self::DATA_FLAGS, self::DATA_FLAG_BREATHING, !$this->isInsideOfWater());
 
@@ -185,26 +182,27 @@ abstract class Living extends Entity implements Damageable{
 				$ev = new EntityDamageEvent($this, EntityDamageEvent::CAUSE_SUFFOCATION, 1);
 				$this->attack($ev->getFinalDamage(), $ev);
 			}
-
+			$maxAir = 400 + $EnchantL * 300;
+			$this->setDataProperty(self::DATA_MAX_AIR, self::DATA_TYPE_SHORT, $maxAir);
 			if(!$this->hasEffect(Effect::WATER_BREATHING) and $this->isInsideOfWater()){
 				if($this instanceof WaterAnimal){
 					$this->setDataProperty(self::DATA_AIR, self::DATA_TYPE_SHORT, 400);
 				}else{
 					$hasUpdate = true;
 					$airTicks = $this->getDataProperty(self::DATA_AIR) - $tickDiff;
-					if($airTicks <= -20){
+					if($airTicks <= -80){
 						$airTicks = 0;
 
 						$ev = new EntityDamageEvent($this, EntityDamageEvent::CAUSE_DROWNING, 2);
 						$this->attack($ev->getFinalDamage(), $ev);
 					}
-					$this->setDataProperty(self::DATA_AIR, self::DATA_TYPE_SHORT, $airTicks);
+					$this->setDataProperty(self::DATA_AIR, self::DATA_TYPE_SHORT, min($airTicks,$maxAir));
 				}
 			}else{
 				if($this instanceof WaterAnimal){
 					$hasUpdate = true;
 					$airTicks = $this->getDataProperty(self::DATA_AIR) - $tickDiff;
-					if($airTicks <= -20){
+					if($airTicks <= -80){
 						$airTicks = 0;
 
 						$ev = new EntityDamageEvent($this, EntityDamageEvent::CAUSE_SUFFOCATION, 2);
@@ -212,7 +210,7 @@ abstract class Living extends Entity implements Damageable{
 					}
 					$this->setDataProperty(self::DATA_AIR, self::DATA_TYPE_SHORT, $airTicks);
 				}else{
-					$this->setDataProperty(self::DATA_AIR, self::DATA_TYPE_SHORT, 400);
+					$this->setDataProperty(self::DATA_AIR, self::DATA_TYPE_SHORT, $maxAir);
 				}
 			}
 		}

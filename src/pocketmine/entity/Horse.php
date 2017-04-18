@@ -1,49 +1,76 @@
 <?php
+
+/*
+ *
+ *  _____            _               _____           
+ * / ____|          (_)             |  __ \          
+ *| |  __  ___ _ __  _ ___ _   _ ___| |__) | __ ___  
+ *| | |_ |/ _ \ '_ \| / __| | | / __|  ___/ '__/ _ \ 
+ *| |__| |  __/ | | | \__ \ |_| \__ \ |   | | | (_) |
+ * \_____|\___|_| |_|_|___/\__, |___/_|   |_|  \___/ 
+ *                         __/ |                    
+ *                        |___/                     
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @author GenisysPro
+ * @link https://github.com/GenisysPro/GenisysPro
+ *
+ *
+*/
+
+/* TODO: 骑马 */
+
 namespace pocketmine\entity;
 
-use pocketmine\item\Item as ItemItem;
 use pocketmine\Player;
+use pocketmine\network\protocol\AddEntityPacket;
+use pocketmine\network\protocol\MobArmorEquipmentPacket;
 
-class Horse extends Animal implements Rideable{
-    const NETWORK_ID = 23;
+class Horse extends Living{
 
-    public $width = 0.75;
-    public $height = 1.562;
-    public $lenght = 1.5;//TODO
+	const NETWORK_ID = 23;
+
+	public function getName() : string{
+		return "Horse";
+	}
 	
-	protected $exp_min = 1;
-	protected $exp_max = 3;//TODO
+	public function setChestPlate($id){
+		/*	
+		416, 417, 418, 419 only
+		*/
+		$pk = new MobArmorEquipmentPacket();
+		$pk->eid = $this->getId();
+		$pk->slots = [
+		ItemItem::get(0,0),
+		ItemItem::get($id,0),
+		ItemItem::get(0,0),
+		ItemItem::get(0,0)
+		];
+		foreach($this->level->getPlayers() as $player){
+			$player->dataPacket($pk);
+		}
+	}
+	
+	public function spawnTo(Player $player){
+		$pk = new AddEntityPacket();
+		$pk->eid = $this->getId();
+		$pk->type = self::NETWORK_ID;
+		$pk->x = $this->x;
+		$pk->y = $this->y;
+		$pk->z = $this->z;
+		$pk->speedX = $this->motionX;
+		$pk->speedY = $this->motionY;
+		$pk->speedZ = $this->motionZ;
+		$pk->yaw = $this->yaw;
+		$pk->pitch = $this->pitch;
+		$pk->metadata = $this->dataProperties;
+		$player->dataPacket($pk);
 
-    public function initEntity(){
-        $this->setMaxHealth(10);//TODO
-        parent::initEntity();
-    }
+		parent::spawnTo($player);
+	}
 
-    public function getName(){
-        return "Horse";//TODO: Name by type
-    }
-
-    public function spawnTo(Player $player){
-        $pk = $this->addEntityDataPacket($player);
-        $pk->type = self::NETWORK_ID;
-
-        $player->dataPacket($pk);
-        parent::spawnTo($player);
-    }
-
-    public function isBaby(){
-        return $this->getDataFlag(self::DATA_AGEABLE_FLAGS, self::DATA_FLAG_BABY);
-    }
-
-    public function getDrops(){
-        $drops = [
-            ItemItem::get(ItemItem::LEATHER, 0, mt_rand(0, 2))
-        ];
-
-        return $drops;
-    }
-    
-    public function canBeLeashed() {
-    	return true; //TODO: distance check, already leashed check
-    }
 }
