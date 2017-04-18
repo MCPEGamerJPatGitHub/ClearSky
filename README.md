@@ -2,9 +2,9 @@
 ofecial repo!
 [ClearSky for MCPE 1.0](https://github.com/ClearSkyTeam/PocketMine-MP/tree/cs-1.0)
 
-## we try to revive it
+# we try to revive it
 
-# WIP
+## WIP
 
 TODE
 COMING SOON
