@@ -1,42 +1,70 @@
 <?php
+
+/*
+ *
+ *  _____            _               _____           
+ * / ____|          (_)             |  __ \          
+ *| |  __  ___ _ __  _ ___ _   _ ___| |__) | __ ___  
+ *| | |_ |/ _ \ '_ \| / __| | | / __|  ___/ '__/ _ \ 
+ *| |__| |  __/ | | | \__ \ |_| \__ \ |   | | | (_) |
+ * \_____|\___|_| |_|_|___/\__, |___/_|   |_|  \___/ 
+ *                         __/ |                    
+ *                        |___/                     
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @author GenisysPro
+ * @link https://github.com/GenisysPro/GenisysPro
+ *
+ *
+*/
+
 namespace pocketmine\network\protocol;
+
 #include <rules/DataPacket.h>
 
-//TERRA INCOGNITA
+
 class LoginPacket extends DataPacket{
 	const NETWORK_ID = Info::LOGIN_PACKET;
-	
+
 	const MOJANG_PUBKEY = "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE8ELkixyLcwlZryUQcu1TvPOmI2B7vX83ndnWRUaXm74wFfa5f/lwQNTfrLVHa2PmenpGI6JhIMUJaWZrjmMj90NoKNFSNBuKdm8rYiXsfaz3K36x/1U26HpG0ZxK/V1V";
-	
-	public $username;
-	public $protocol;
 
 	const EDITION_POCKET = 0;
 
+
+	public $username;
+	public $protocol;
 	public $gameEdition;
 	public $clientUUID;
 	public $clientId;
 	public $identityPublicKey;
 	public $serverAddress;
+
 	public $skinId = null;
 	public $skin = null;
-	public $chainData = [];
-	
+
+	public $clientData = [];
+
 	public function decode(){
 		$this->protocol = $this->getInt();
-		if(!in_array($this->protocol, Info::ACCEPT_PROTOCOL)){
-			return; //Do not attempt to decode for non-accepted protocols
+		if(!in_array($this->protocol, Info::ACCEPTED_PROTOCOLS)){
+			$this->buffer = null;
+			return;
 		}
-		
+
 		$this->gameEdition = $this->getByte();
 
-		$str = zlib_decode($this->getString(), 1024 * 1024 * 64); //Max 64MB
+		$str = zlib_decode($this->getString(), 1024 * 1024 * 64);
 
 		$this->setBuffer($str, 0);
-		$chainData = json_decode($this->get($this->getLInt()))->{"chain"};
-		$this->chainData = $chainData;
-		
+
 		$time = time();
+
+		$chainData = json_decode($this->get($this->getLInt()))->{"chain"};
+		// Start with the trusted one
 		$chainKey = self::MOJANG_PUBKEY;
 		while(!empty($chainData)){
 			foreach($chainData as $index => $chain){
@@ -53,9 +81,11 @@ class LoginPacket extends DataPacket{
 					$verified = isset($webtoken["nbf"]) && $webtoken["nbf"] <= $time && isset($webtoken["exp"]) && $webtoken["exp"] > $time;
 				}
 				if($verified and isset($webtoken["identityPublicKey"])){
+					// Looped key chain. #blamemojang
 					if($webtoken["identityPublicKey"] != self::MOJANG_PUBKEY) $chainKey = $webtoken["identityPublicKey"];
 					break;
 				}elseif($chainKey === null){
+					// We have already gave up
 					break;
 				}
 			}
@@ -65,19 +95,15 @@ class LoginPacket extends DataPacket{
 				unset($chainData[$index]);
 			}
 		}
-		list($verified, $skinToken) = $this->decodeToken($this->get($this->getLInt()), $chainKey);
-		
-		if(isset($skinToken["ClientRandomId"])){
-			$this->clientId = $skinToken["ClientRandomId"];
-		}
-		if(isset($skinToken["ServerAddress"])){
-			$this->serverAddress = $skinToken["ServerAddress"];
-		}
-		if(isset($skinToken["SkinData"])){
-			$this->skin = base64_decode($skinToken["SkinData"]);
-		}
-		if(isset($skinToken["SkinId"])){
-			$this->skinId = $skinToken["SkinId"];
+
+		list($verified, $this->clientData) = $this->decodeToken($this->get($this->getLInt()), $chainKey);
+
+		$this->clientId = $this->clientData["ClientRandomId"] ?? null;
+		$this->serverAddress = $this->clientData["ServerAddress"] ?? null;
+		$this->skinId = $this->clientData["SkinId"] ?? null;
+
+		if(isset($this->clientData["SkinData"])){
+			$this->skin = base64_decode($this->clientData["SkinData"]);
 		}
 		if($verified){
 			$this->identityPublicKey = $chainKey;
@@ -85,9 +111,9 @@ class LoginPacket extends DataPacket{
 	}
 
 	public function encode(){
-		
+
 	}
-	
+
 	public function decodeToken($token, $key){
 		$tokens = explode(".", $token);
 		list($headB64, $payloadB64, $sigB64) = $tokens;

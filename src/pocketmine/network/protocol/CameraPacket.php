@@ -1,22 +1,49 @@
 <?php
-namespace pocketmine\network\protocol;
+
+/*
+ *
+ *    _______                                _
+ *   |__   __|                              | |
+ *      | | ___  ___ ___  ___ _ __ __ _  ___| |_
+ *      | |/ _ \/ __/ __|/ _ \  __/ _` |/ __| __|
+ *      | |  __/\__ \__ \  __/ | | (_| | (__| |_
+ *      |_|\___||___/___/\___|_|  \__,_|\___|\__|
+ *
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @author Tessetact Team
+ * @link http://www.github.com/TesseractTeam/Tesseract
+ * 
+ *
+ */
 
 #include <rules/DataPacket.h>
+namespace pocketmine\network\protocol;
+
 
 class CameraPacket extends DataPacket{
+	
 	const NETWORK_ID = Info::CAMERA_PACKET;
-
-	public $eid1; // Maybe playertarget
-	public $eid2; // Maybe camera // I may confirm that. Write "only puts" eid1, and the camera should in theory know its own id.. except.. maybe it has schizophrenia
-
+	public $eid;
+	
 	public function decode(){
-		$this->eid1 = $this->getEntityId();
-		$this->eid2 = $this->getEntityId();
 	}
-
+	
 	public function encode(){
 		$this->reset();
-		$this->putEntityId($this->eid1);
-		$this->putEntityId($this->eid2);
+		$this->putVarInt($this->eid);
+		$this->putVarInt($this->eid);
 	}
+
+	/**
+	 * @return PacketName|string
+     */
+	public function getName(){
+		return "BossEventPacket";
+	}
+
 }
