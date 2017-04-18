@@ -1,4 +1,4 @@
-<?php
+	<?php
 
 /*
  *
@@ -74,10 +74,7 @@ class RakLibInterface implements ServerInstance, AdvancedSourceInterface{
 		$work = false;
 		if($this->interface->handlePacket()){
 			$work = true;
-			$lasttime = time();
 			while($this->interface->handlePacket()){
-				$diff = time() - $lasttime;
-				if($diff >= 1) break;
 			}
 		}
 
@@ -141,21 +138,21 @@ class RakLibInterface implements ServerInstance, AdvancedSourceInterface{
 					}
 				}
 			}catch(\Throwable $e){
-				$logger = $this->server->getLogger();
 				if(\pocketmine\DEBUG > 1 and isset($pk)){
-					$logger->debug("Exception in packet " . get_class($pk) . " 0x" . bin2hex($packet->buffer));
+					$logger = $this->server->getLogger();
+					$logger->debug("Packet " . get_class($pk) . " 0x" . bin2hex($packet->buffer));
+					$logger->logException($e);
 				}
-				$logger->logException($e);
+
+				if(isset($this->players[$identifier])){
+					$this->interface->blockAddress($this->players[$identifier]->getAddress(), 5);
+				}
 			}
 		}
 	}
 
 	public function blockAddress($address, $timeout = 300){
 		$this->interface->blockAddress($address, $timeout);
-	}
-	
-	public function unblockAddress($address){
-		$this->interface->unblockAddress($address);
 	}
 
 	public function handleRaw($address, $port, $payload){
@@ -171,26 +168,14 @@ class RakLibInterface implements ServerInstance, AdvancedSourceInterface{
 	}
 
 	public function setName($name){
-
-		if($this->server->isDServerEnabled()){
-			if($this->server->dserverConfig["motdMaxPlayers"] > 0) $pc = $this->server->dserverConfig["motdMaxPlayers"];
-			elseif($this->server->dserverConfig["motdAllPlayers"]) $pc = $this->server->getDServerMaxPlayers();
-			else $pc = $this->server->getMaxPlayers();
-
-			if($this->server->dserverConfig["motdPlayers"]) $poc = $this->server->getDServerOnlinePlayers();
-			else $poc = count($this->server->getOnlinePlayers());
-		}else{
-			$info = $this->server->getQueryInformation();
-			$pc = $info->getMaxPlayerCount();
-			$poc = $info->getPlayerCount();
-		}
+		$info = $this->server->getQueryInformation();
 
 		$this->interface->sendOption("name",
 			"MCPE;" . rtrim(addcslashes($name, ";"), '\\') . ";" .
 			Info::CURRENT_PROTOCOL . ";" .
 			Info::MINECRAFT_VERSION_NETWORK . ";" .
-			$poc . ";" .
-			$pc
+			$info->getPlayerCount() . ";" .
+			$info->getMaxPlayerCount()
 		);
 	}
 
