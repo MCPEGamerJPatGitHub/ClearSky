@@ -1,24 +1,4 @@
-	<?php
-
-/*
- *
- *  ____            _        _   __  __ _                  __  __ ____
- * |  _ \ ___   ___| | _____| |_|  \/  (_)_ __   ___      |  \/  |  _ \
- * | |_) / _ \ / __| |/ / _ \ __| |\/| | | '_ \ / _ \_____| |\/| | |_) |
- * |  __/ (_) | (__|   <  __/ |_| |  | | | | | |  __/_____| |  | |  __/
- * |_|   \___/ \___|_|\_\___|\__|_|  |_|_|_| |_|\___|     |_|  |_|_|
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * @author PocketMine Team
- * @link http://www.pocketmine.net/
- *
- *
-*/
-
+<?php
 namespace pocketmine\network;
 
 use pocketmine\event\player\PlayerCreationEvent;
@@ -27,8 +7,8 @@ use pocketmine\network\protocol\Info;
 use pocketmine\network\protocol\Info as ProtocolInfo;
 use pocketmine\Player;
 use pocketmine\Server;
+use pocketmine\utils\MainLogger;
 use raklib\protocol\EncapsulatedPacket;
-use raklib\protocol\PacketReliability;
 use raklib\RakLib;
 use raklib\server\RakLibServer;
 use raklib\server\ServerHandler;
@@ -56,6 +36,11 @@ class RakLibInterface implements ServerInstance, AdvancedSourceInterface{
 
 	/** @var ServerHandler */
 	private $interface;
+	
+	private $timeout;
+	
+	private $currentprotocol;
+	private $networkversion;
 
 	public function __construct(Server $server){
 
@@ -64,6 +49,10 @@ class RakLibInterface implements ServerInstance, AdvancedSourceInterface{
 
 		$this->rakLib = new RakLibServer($this->server->getLogger(), $this->server->getLoader(), $this->server->getPort(), $this->server->getIp() === "" ? "0.0.0.0" : $this->server->getIp());
 		$this->interface = new ServerHandler($this->rakLib, $this);
+
+		for($i = 0; $i < 256; ++$i){
+			$this->channelCounts[$i] = 0;
+		}
 	}
 
 	public function setNetwork(Network $network){
@@ -74,11 +63,21 @@ class RakLibInterface implements ServerInstance, AdvancedSourceInterface{
 		$work = false;
 		if($this->interface->handlePacket()){
 			$work = true;
-			while($this->interface->handlePacket()){
+			if($this->timeout<0){
+				while($this->interface->handlePacket()){
+				}
+			}else{
+				$timestamp=time();
+				while($this->interface->handlePacket()){
+					if(time()-$timestamp >= $this->timeout){
+						break;
+					}
+				}
 			}
+
 		}
 
-		if(!$this->rakLib->isRunning() and !$this->rakLib->isShutdown()){
+		if($this->rakLib->isTerminated()){
 			$this->network->unregisterInterface($this);
 
 			throw new \Exception("RakLib Thread crashed");
@@ -171,9 +170,9 @@ class RakLibInterface implements ServerInstance, AdvancedSourceInterface{
 		$info = $this->server->getQueryInformation();
 
 		$this->interface->sendOption("name",
-			"MCPE;" . rtrim(addcslashes($name, ";"), '\\') . ";" .
+			"MCPE;" . addcslashes($name, ";") . ";" .
 			Info::CURRENT_PROTOCOL . ";" .
-			Info::MINECRAFT_VERSION_NETWORK . ";" .
+			\pocketmine\MINECRAFT_VERSION_NETWORK . ";" .
 			$info->getPlayerCount() . ";" .
 			$info->getMaxPlayerCount()
 		);
@@ -196,13 +195,12 @@ class RakLibInterface implements ServerInstance, AdvancedSourceInterface{
 			$pk = null;
 			if(!$packet->isEncoded){
 				$packet->encode();
-				$packet->isEncoded = true;
 			}elseif(!$needACK){
 				if(!isset($packet->__encapsulatedPacket)){
 					$packet->__encapsulatedPacket = new CachedEncapsulatedPacket;
 					$packet->__encapsulatedPacket->identifierACK = null;
 					$packet->__encapsulatedPacket->buffer = chr(0xfe) . $packet->buffer; // #blameshoghi
-					$packet->__encapsulatedPacket->reliability = PacketReliability::RELIABLE_ORDERED;
+					$packet->__encapsulatedPacket->reliability = 3;
 					$packet->__encapsulatedPacket->orderChannel = 0;
 				}
 				$pk = $packet->__encapsulatedPacket;
@@ -218,7 +216,7 @@ class RakLibInterface implements ServerInstance, AdvancedSourceInterface{
 			if($pk === null){
 				$pk = new EncapsulatedPacket();
 				$pk->buffer = chr(0xfe) . $packet->buffer; // #blameshoghi
-				$packet->reliability = PacketReliability::RELIABLE_ORDERED;
+				$packet->reliability = 3;
 				$packet->orderChannel = 0;
 
 				if($needACK === true){
